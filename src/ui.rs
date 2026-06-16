@@ -12,7 +12,7 @@ use crate::ml::MLEngine;
 
 pub struct SemanticClipboardApp {
     db: Arc<Mutex<Database>>,
-    ml: Arc<Mutex<MLEngine>>,
+    ml: Arc<Mutex<Option<MLEngine>>>,
     search_query: String,
     results: Vec<ClipboardEntry>,
     is_visible: Arc<Mutex<bool>>,
@@ -27,6 +27,8 @@ pub struct SemanticClipboardApp {
     content_to_paste: Arc<Mutex<String>>,
     window_id: Option<iced::window::Id>,
     always_on_top: bool,
+    pub model_download_progress: Option<f32>,
+    pub initialize_error: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -52,22 +54,26 @@ pub enum Message {
     ToggleShowInTray(bool),
     ToggleAlwaysOnTop,
     MinimizeWindow,
+    DownloadProgress(f32),
+    InitializeSuccess,
+    InitializeFailure(String),
+    RetryInitialize,
 }
 
 impl SemanticClipboardApp {
     pub fn new(
         db: Arc<Mutex<Database>>,
-        ml: Arc<Mutex<MLEngine>>,
+        ml: Arc<Mutex<Option<MLEngine>>>,
         is_visible: Arc<Mutex<bool>>,
         needs_refresh: Arc<AtomicBool>,
         command_flag: Arc<AtomicU8>,
-    ) -> Self {
+    ) -> (Self, Task<Message>) {
         let results = db.lock().unwrap().get_all_entries().unwrap_or_default();
         let history_limit_str = db.lock().unwrap().get_setting("history_limit").unwrap_or_default().unwrap_or_else(|| "10000".to_string());
         let cache_only_pinned = db.lock().unwrap().get_setting("cache_only_pinned").unwrap_or_default() == Some("true".to_string());
         let show_in_tray = db.lock().unwrap().get_setting("show_in_tray").unwrap_or_default() == Some("true".to_string());
 
-        Self {
+        let app = Self {
             db,
             ml,
             search_query: String::new(),
@@ -84,7 +90,18 @@ impl SemanticClipboardApp {
             content_to_paste: Arc::new(Mutex::new(String::new())),
             window_id: None,
             always_on_top: true,
-        }
+            model_download_progress: Some(0.0),
+            initialize_error: None,
+        };
+
+        let db_clone = app.db.clone();
+        let ml_clone = app.ml.clone();
+        let download_task = Task::run(
+            download_and_initialize_stream(db_clone, ml_clone),
+            |msg| msg
+        );
+
+        (app, download_task)
     }
 
     pub fn update_search(&mut self) {
@@ -93,18 +110,22 @@ impl SemanticClipboardApp {
         if self.search_query.is_empty() {
             self.results = all_entries;
         } else {
-            let mut ml = self.ml.lock().unwrap();
-            if let Ok(query_embed) = ml.embed(&self.search_query) {
-                let mut scored: Vec<(f32, ClipboardEntry)> = all_entries.into_iter().filter_map(|e| {
-                    if e.embedding.len() == query_embed.len() {
-                        let score = crate::ml::MLEngine::cosine_similarity(&query_embed, &e.embedding);
-                        Some((score, e))
-                    } else {
-                        None
-                    }
-                }).collect();
-                scored.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
-                self.results = scored.into_iter().map(|(_, e)| e).collect();
+            let mut ml_lock = self.ml.lock().unwrap();
+            if let Some(ref mut ml) = *ml_lock {
+                if let Ok(query_embed) = ml.embed(&self.search_query) {
+                    let mut scored: Vec<(f32, ClipboardEntry)> = all_entries.into_iter().filter_map(|e| {
+                        if e.embedding.len() == query_embed.len() {
+                            let score = crate::ml::MLEngine::cosine_similarity(&query_embed, &e.embedding);
+                            Some((score, e))
+                        } else {
+                            None
+                        }
+                    }).collect();
+                    scored.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+                    self.results = scored.into_iter().map(|(_, e)| e).collect();
+                } else {
+                    self.results = vec![];
+                }
             } else {
                 self.results = vec![];
             }
@@ -114,6 +135,30 @@ impl SemanticClipboardApp {
 
 pub fn update(app: &mut SemanticClipboardApp, message: Message) -> Task<Message> {
     match message {
+        Message::DownloadProgress(progress) => {
+            app.model_download_progress = Some(progress);
+            Task::none()
+        }
+        Message::InitializeSuccess => {
+            app.model_download_progress = None;
+            app.update_search();
+            Task::none()
+        }
+        Message::InitializeFailure(err) => {
+            app.model_download_progress = None;
+            app.initialize_error = Some(err);
+            Task::none()
+        }
+        Message::RetryInitialize => {
+            app.initialize_error = None;
+            app.model_download_progress = Some(0.0);
+            let db_clone = app.db.clone();
+            let ml_clone = app.ml.clone();
+            Task::run(
+                download_and_initialize_stream(db_clone, ml_clone),
+                |msg| msg
+            )
+        }
         Message::SearchChanged(query) => {
             app.search_query = query;
             app.update_search();
@@ -261,6 +306,9 @@ pub fn update(app: &mut SemanticClipboardApp, message: Message) -> Task<Message>
             Task::none()
         }
         Message::Unfocused => {
+            if app.model_download_progress.is_some() {
+                return Task::none();
+            }
             *app.is_visible.lock().unwrap() = false;
             if let Some(id) = app.window_id {
                 return iced::window::set_mode(id, iced::window::Mode::Hidden);
@@ -289,6 +337,82 @@ pub fn view(app: &SemanticClipboardApp) -> Element<'_, Message> {
                 ..Default::default()
             })
             .into();
+    }
+
+    if let Some(progress) = app.model_download_progress {
+        return container(
+            column![
+                text("Welcome to Semantic Clipboard!").size(22).style(|_theme: &Theme| text::Style { color: Some(Color::WHITE) }),
+                Space::new().height(10),
+                text("Downloading AI Model (~45MB)...").size(14).style(|_theme: &Theme| text::Style { color: Some(Color::from_rgba(1.0, 1.0, 1.0, 0.7)) }),
+                Space::new().height(20),
+                container(
+                    container(Space::new())
+                        .width(Length::Fixed((300.0 * progress).max(1.0)))
+                        .height(Length::Fill)
+                        .style(|_theme| container::Style {
+                            background: Some(Color::from_rgb(0.3, 0.5, 1.0).into()),
+                            border: iced::Border {
+                                radius: 4.0.into(),
+                                ..Default::default()
+                            },
+                            ..Default::default()
+                        })
+                )
+                .width(Length::Fixed(300.0))
+                .height(Length::Fixed(8.0))
+                .style(|_theme| container::Style {
+                    background: Some(Color::from_rgba(1.0, 1.0, 1.0, 0.1).into()),
+                    border: iced::Border {
+                        radius: 4.0.into(),
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                }),
+                Space::new().height(10),
+                text(format!("{:.1}%", progress * 100.0)).size(12).style(|_theme: &Theme| text::Style { color: Some(Color::from_rgba(1.0, 1.0, 1.0, 0.5)) }),
+            ]
+            .align_x(Alignment::Center)
+        )
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .align_x(Alignment::Center)
+        .align_y(Alignment::Center)
+        .style(|_theme| container::Style {
+            background: Some(Color::from_rgba(0.08, 0.08, 0.08, 0.95).into()),
+            border: iced::Border {
+                radius: 12.0.into(),
+                ..Default::default()
+            },
+            ..Default::default()
+        })
+        .into();
+    }
+
+    if let Some(ref err) = app.initialize_error {
+        return container(
+            column![
+                text("Initialization Error").size(22).style(|_theme: &Theme| text::Style { color: Some(Color::from_rgb(1.0, 0.3, 0.3)) }),
+                Space::new().height(10),
+                text(err).size(12).style(|_theme: &Theme| text::Style { color: Some(Color::WHITE) }),
+                Space::new().height(20),
+                button("Retry").on_press(Message::RetryInitialize).padding(10)
+            ]
+            .align_x(Alignment::Center)
+        )
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .align_x(Alignment::Center)
+        .align_y(Alignment::Center)
+        .style(|_theme| container::Style {
+            background: Some(Color::from_rgba(0.08, 0.08, 0.08, 0.95).into()),
+            border: iced::Border {
+                radius: 12.0.into(),
+                ..Default::default()
+            },
+            ..Default::default()
+        })
+        .into();
     }
 
     let search_bar = container(
@@ -608,4 +732,51 @@ pub fn theme(_app: &SemanticClipboardApp) -> Theme {
         Ok(dark_light::Mode::Light) => Theme::Light,
         _ => Theme::Dark,
     }
+}
+
+pub fn download_and_initialize_stream(
+    _db: Arc<Mutex<Database>>,
+    ml: Arc<Mutex<Option<MLEngine>>>,
+) -> impl iced::futures::Stream<Item = Message> {
+    use iced::futures::sink::SinkExt;
+    iced::stream::channel(10, move |mut output: iced::futures::channel::mpsc::Sender<Message>| async move {
+        let (tx, mut rx) = tokio::sync::mpsc::channel(100);
+
+        let ml_clone = ml.clone();
+        tokio::spawn(async move {
+            let tx_clone = tx.clone();
+            
+            let result = {
+                let download_res = MLEngine::download_models_if_needed(move |progress| {
+                    let _ = tx_clone.blocking_send(Message::DownloadProgress(progress));
+                }).await;
+
+                match download_res {
+                    Ok((model_path, tokenizer_path)) => {
+                        match MLEngine::new(&model_path, &tokenizer_path) {
+                            Ok(engine) => {
+                                *ml_clone.lock().unwrap() = Some(engine);
+                                Ok(())
+                            }
+                            Err(e) => Err(format!("Failed to initialize ML Engine: {}", e))
+                        }
+                    }
+                    Err(e) => Err(format!("Failed to download ML model: {}", e))
+                }
+            };
+
+            match result {
+                Ok(()) => {
+                    let _ = tx.send(Message::InitializeSuccess).await;
+                }
+                Err(err_msg) => {
+                    let _ = tx.send(Message::InitializeFailure(err_msg)).await;
+                }
+            }
+        });
+
+        while let Some(msg) = rx.recv().await {
+            let _ = output.send(msg).await;
+        }
+    })
 }

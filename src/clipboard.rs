@@ -9,12 +9,12 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 pub struct ClipboardMonitor {
     db: Arc<Mutex<Database>>,
-    ml: Arc<Mutex<MLEngine>>,
+    ml: Arc<Mutex<Option<MLEngine>>>,
     needs_refresh: Arc<AtomicBool>,
 }
 
 impl ClipboardMonitor {
-    pub fn new(db: Arc<Mutex<Database>>, ml: Arc<Mutex<MLEngine>>, needs_refresh: Arc<AtomicBool>) -> Self {
+    pub fn new(db: Arc<Mutex<Database>>, ml: Arc<Mutex<Option<MLEngine>>>, needs_refresh: Arc<AtomicBool>) -> Self {
         Self { db, ml, needs_refresh }
     }
 
@@ -44,7 +44,11 @@ impl ClipboardMonitor {
                         // Create embedding
                         let embedding_result = {
                             let mut ml_lock = self.ml.lock().unwrap();
-                            ml_lock.embed(current_text)
+                            if let Some(ref mut ml) = *ml_lock {
+                                ml.embed(current_text)
+                            } else {
+                                continue;
+                            }
                         };
 
                         match embedding_result {

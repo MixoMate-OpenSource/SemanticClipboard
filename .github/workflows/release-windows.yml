@@ -33,8 +33,40 @@ jobs:
           CFLAGS: /MD
           CXXFLAGS: /MD
 
+      - name: Generate self-signed certificate and sign binary
+        shell: pwsh
+        run: |
+          $cert = New-SelfSignedCertificate -Type Custom -Subject "CN=SemanticClipboard" -KeyUsage DigitalSignature -FriendlyName "SemanticClipboard Cert" -CertStoreLocation "Cert:\CurrentUser\My" -NotAfter (Get-Date).AddYears(1)
+          $pfxPath = "$env:TEMP\cert.pfx"
+          $password = ConvertTo-SecureString "SemanticClipboardPassword" -AsPlainText -Force
+          Export-PfxCertificate -Cert $cert -FilePath $pfxPath -Password $password
+          
+          # Ensure target/packages exists and export the public .cer certificate there
+          New-Item -ItemType Directory -Force -Path "target/packages"
+          Export-Certificate -Cert $cert -FilePath "target/packages/SemanticClipboard.cer"
+          
+          # Find signtool.exe
+          $signtool = (Get-ChildItem -Path "C:\Program Files (x86)\Windows Kits" -Filter signtool.exe -Recurse | Where-Object { $_.FullName -like "*x64*" } | Select-Object -First 1).FullName
+          if (-not $signtool) { $signtool = "signtool" }
+          
+          # Sign binary
+          & $signtool sign /f $pfxPath /p "SemanticClipboardPassword" /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 target/release/SemanticClipboard.exe
+
       - name: Package with cargo-packager
         run: cargo packager --release -f wix,nsis
+
+      - name: Sign installers
+        shell: pwsh
+        run: |
+          $pfxPath = "$env:TEMP\cert.pfx"
+          $signtool = (Get-ChildItem -Path "C:\Program Files (x86)\Windows Kits" -Filter signtool.exe -Recurse | Where-Object { $_.FullName -like "*x64*" } | Select-Object -First 1).FullName
+          if (-not $signtool) { $signtool = "signtool" }
+          
+          # Sign all .exe and .msi installers
+          Get-ChildItem -Path "target/packages" -Include *.exe, *.msi -Recurse | ForEach-Object {
+              Write-Host "Signing: $($_.FullName)"
+              & $signtool sign /f $pfxPath /p "SemanticClipboardPassword" /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 $_.FullName
+          }
 
       - name: Upload binaries to release
         uses: softprops/action-gh-release@v2
@@ -42,6 +74,7 @@ jobs:
           files: |
             target/packages/**/*.msi
             target/packages/**/*.exe
+            target/packages/**/*.cer
           fail_on_unmatched_files: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

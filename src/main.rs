@@ -1,3 +1,5 @@
+#![windows_subsystem = "windows"]
+
 mod db;
 mod ml;
 mod clipboard;
@@ -25,27 +27,8 @@ pub fn main() -> iced::Result {
     // Initialize Database
     let db = Arc::new(Mutex::new(Database::new().expect("Failed to initialize database")));
     
-    // Setup model paths
-    let data_dir = dirs::data_local_dir().unwrap_or_else(|| std::path::PathBuf::from("."));
-    let app_dir = data_dir.join("SemanticClipboard");
-    let model_path = app_dir.join("model.onnx");
-    let tokenizer_path = app_dir.join("tokenizer.json");
-
-    // Ensure directory exists
-    std::fs::create_dir_all(&app_dir).unwrap();
-
-    // Download models with progress output
-    let (model_path, tokenizer_path) = tokio::runtime::Runtime::new().unwrap().block_on(async {
-        MLEngine::download_models_if_needed(|progress| {
-            print!("\rDownloading model: {:.1}%", progress * 100.0);
-            use std::io::Write;
-            let _ = std::io::stdout().flush();
-        }).await.expect("Failed to download models")
-    });
-    println!("\nModels ready.");
-
-    // Initialize ML Engine
-    let ml = Arc::new(Mutex::new(MLEngine::new(&model_path, &tokenizer_path).expect("Failed to init ML")));
+    // Initialize ML Engine wrapper (populated in background)
+    let ml = Arc::new(Mutex::new(None));
 
     let is_visible = Arc::new(Mutex::new(true));
     let needs_refresh = Arc::new(AtomicBool::new(false));
@@ -182,7 +165,7 @@ pub fn main() -> iced::Result {
     });
 
     iced::application(
-        move || (SemanticClipboardApp::new(db.clone(), ml.clone(), is_visible.clone(), needs_refresh.clone(), command_flag.clone()), iced::Task::none()),
+        move || SemanticClipboardApp::new(db.clone(), ml.clone(), is_visible.clone(), needs_refresh.clone(), command_flag.clone()),
         ui::update,
         ui::view
     )
@@ -192,6 +175,10 @@ pub fn main() -> iced::Result {
         text_color: iced::Color::WHITE,
     })
     .window(window::Settings {
+        size: iced::Size::new(500.0, 700.0),
+        min_size: Some(iced::Size::new(500.0, 700.0)),
+        max_size: Some(iced::Size::new(500.0, 700.0)),
+        resizable: false,
         transparent: true,
         decorations: false,
         level: window::Level::AlwaysOnTop,
