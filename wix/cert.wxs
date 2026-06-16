@@ -1,0 +1,26 @@
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Fragment>
+    <!-- Custom action to install the certificate -->
+    <CustomAction Id="InstallCertCmd" 
+                  Directory="INSTALLDIR" 
+                  ExeCommand="certutil.exe -addstore Root &quot;[INSTALLDIR]SemanticClipboard.cer&quot;" 
+                  Execute="deferred" 
+                  Impersonate="no" 
+                  Return="ignore" />
+
+    <!-- Custom action to uninstall the certificate -->
+    <CustomAction Id="UninstallCertCmd" 
+                  Directory="INSTALLDIR" 
+                  ExeCommand="certutil.exe -delstore Root &quot;SemanticClipboard&quot;" 
+                  Execute="deferred" 
+                  Impersonate="no" 
+                  Return="ignore" />
+
+    <InstallExecuteSequence>
+      <!-- Execute during installation after files are copied -->
+      <Custom Action="InstallCertCmd" After="InstallFiles">NOT Installed</Custom>
+      <!-- Execute during uninstallation before files are deleted -->
+      <Custom Action="UninstallCertCmd" Before="RemoveFiles">Installed AND NOT UPGRADINGPRODUCTCODE</Custom>
+    </InstallExecuteSequence>
+  </Fragment>
+</Wix>

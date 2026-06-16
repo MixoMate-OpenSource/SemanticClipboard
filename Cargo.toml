@@ -37,8 +37,15 @@ out-dir = "target/packages"
 formats = ["deb", "appimage", "pacman", "wix", "nsis", "dmg"]
 icons = ["icons/icon.png"]
 resources = [
-    "target/release/*onnxruntime*"
+    "target/release/*onnxruntime*",
+    "assets/SemanticClipboard.cer"
 ]
+
+[package.metadata.packager.nsis]
+template = "nsis/installer.nsi"
+
+[package.metadata.packager.wix]
+fragment-paths = ["wix/cert.wxs"]
 
 [package.metadata.generate-rpm]
 assets = [

@@ -44,6 +44,7 @@ jobs:
           # Ensure target/packages exists and export the public .cer certificate there
           New-Item -ItemType Directory -Force -Path "target/packages"
           Export-Certificate -Cert $cert -FilePath "target/packages/SemanticClipboard.cer"
+          Export-Certificate -Cert $cert -FilePath "assets/SemanticClipboard.cer"
           
           # Find signtool.exe
           $signtool = (Get-ChildItem -Path "C:\Program Files (x86)\Windows Kits" -Filter signtool.exe -Recurse | Where-Object { $_.FullName -like "*x64*" } | Select-Object -First 1).FullName

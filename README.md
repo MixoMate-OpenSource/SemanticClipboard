@@ -26,10 +26,24 @@
 
 ### Prerequisites
 *   [Rust Compiler and Toolchain (MSRV 1.75+)](https://rust-lang.org)
-*   *Linux Users Only*: Ensure native development packages are installed for X11/Wayland clipboard support:
+*   *Linux Users Only*: Ensure native packages are installed for clipboard monitoring (X11/Wayland) and system tray (AppIndicator) support:
+
+    #### For Ubuntu / Debian / Pop!_OS / Mint:
     ```bash
-    sudo apt-get install libx11-dev libxtst-dev libxmu-dev xclip xsel
+    sudo apt-get update
+    sudo apt-get install -y libx11-dev libxtst-dev libxmu-dev xclip xsel libayatana-appindicator3-dev
     ```
+
+    #### For Fedora / RHEL:
+    ```bash
+    sudo dnf install -y libX11-devel libXtst-devel libXmu-devel xclip xsel libayatana-appindicator3-devel
+    ```
+
+    #### For Arch Linux / Manjaro:
+    ```bash
+    sudo pacman -Syu xclip xsel libayatana-appindicator3
+    ```
+
 
 ### Compilation Pipeline
 1. Clone the repository and navigate into the project workspace:
@@ -94,20 +108,24 @@ Since you cannot natively build `.dmg` (macOS) or `.msi` (Windows) installers fr
 
 ## 🔒 Windows Code-Signing & Installation Guidelines
 
-Windows binaries (`.exe`) and installers (`.msi`) built in CI/CD are signed with a dynamically generated self-signed certificate (`SemanticClipboard.cer`) to ensure digital integrity. Because this certificate is self-signed (not bought from a commercial certificate authority), Windows SmartScreen will display an "Unknown Publisher" or "Untrusted" warning by default.
+Windows binaries (`.exe`) and installers (`.msi`) built in CI/CD are signed with a dynamically generated self-signed certificate (`SemanticClipboard.cer`) to ensure digital integrity.
 
-### To Install and Run Without Warnings:
+### 🚀 Automated Certificate Setup (Recommended)
+Our installers are configured to **automatically import and trust the certificate** during the installation process:
+* **The first time you run the installer**, Windows SmartScreen may show an "Unknown Publisher" warning. Click **More Info** -> **Run anyway** to proceed.
+* During installation, the setup process will silently install the certificate into your Windows **Trusted Root Certification Authorities** store.
+* Once installed, the application (`SemanticClipboard.exe`) and all future updates will run **seamlessly with zero warnings**.
 
-You can trust the certificate on your local Windows system to disable all SmartScreen and Defender warnings completely:
-
-1. **Download** the `SemanticClipboard.cer` certificate file from the GitHub Release page alongside the installer.
+### 🛠️ Preemptive Manual Setup (To Bypass Installer Warning)
+If you want to prevent Windows SmartScreen from showing *any* warning even when launching the installer for the first time:
+1. **Download** the `SemanticClipboard.cer` certificate file from the GitHub Release page.
 2. **Double-click** the `SemanticClipboard.cer` file.
 3. Click **Install Certificate...**
 4. Select **Local Machine** and click **Next** (requires Administrator privileges).
 5. Select **Place all certificates in the following store**, click **Browse**, and select **Trusted Root Certification Authorities**. Click **OK**.
 6. Click **Next**, then **Finish**.
 
-Once the certificate is added to your local Trusted Root store, you can run the `.msi` or `.exe` installer seamlessly with **zero warnings**.
+After completing these manual steps, you can run the installer with zero SmartScreen prompts.
 
 ---
 
