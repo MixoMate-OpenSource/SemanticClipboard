@@ -63,8 +63,17 @@ jobs:
         with:
           tool: cargo-generate-rpm
 
-      - name: Build release binary
+      - name: Build release binary (Windows)
+        if: matrix.platform == 'windows'
         run: cargo build --release
+        env:
+          CFLAGS: /MD
+          CXXFLAGS: /MD
+
+      - name: Build release binary (Unix)
+        if: matrix.platform != 'windows'
+        run: cargo build --release
+
 
       - name: Package RPM (Linux)
         if: matrix.platform == 'linux'
