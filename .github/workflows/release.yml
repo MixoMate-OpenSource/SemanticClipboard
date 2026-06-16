@@ -13,15 +13,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
-            platform: linux
-            formats: deb,appimage,pacman
-          - os: macos-latest
-            platform: macos
-            formats: dmg
           - os: windows-latest
             platform: windows
             formats: wix,nsis
+
 
     permissions:
       contents: write
