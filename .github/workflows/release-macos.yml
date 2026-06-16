@@ -1,0 +1,43 @@
+name: Release - macOS
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    name: Build & Package (macOS)
+    runs-on: macos-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust Cache
+        uses: swatinem/rust-cache@v2
+
+      - name: Install cargo-packager
+        uses: taiki-e/cache-cargo-install-action@v3
+        with:
+          tool: cargo-packager
+
+      - name: Build release binary
+        run: cargo build --release
+
+      - name: Package with cargo-packager
+        run: cargo packager --release -f dmg
+
+      - name: Upload binaries to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            target/packages/**/*.dmg
+          fail_on_unmatched_files: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

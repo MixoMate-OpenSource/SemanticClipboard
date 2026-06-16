@@ -1,23 +1,14 @@
-name: Release
+name: Release - Linux
 
 on:
   push:
     tags:
-      - 'v*' # Triggers when a new version tag is pushed, e.g., v0.1.0
+      - 'v*'
 
 jobs:
   release:
-    name: Build & Package (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: windows-latest
-            platform: windows
-            formats: wix,nsis
-
-
+    name: Build & Package (Linux)
+    runs-on: ubuntu-latest
     permissions:
       contents: write
 
@@ -25,8 +16,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install System Dependencies (Linux)
-        if: matrix.platform == 'linux'
+      - name: Install System Dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -52,38 +42,21 @@ jobs:
         with:
           tool: cargo-packager
 
-      - name: Install cargo-generate-rpm (Linux)
-        if: matrix.platform == 'linux'
+      - name: Install cargo-generate-rpm
         uses: taiki-e/cache-cargo-install-action@v3
         with:
           tool: cargo-generate-rpm
 
-      - name: Build release binary (Windows)
-        if: matrix.platform == 'windows'
-        run: cargo build --release
-        env:
-          CFLAGS: /MD
-          CXXFLAGS: /MD
-
-      - name: Build release binary (Unix)
-        if: matrix.platform != 'windows'
+      - name: Build release binary
         run: cargo build --release
 
-
-      - name: Package RPM (Linux)
-        if: matrix.platform == 'linux'
+      - name: Package RPM
         run: |
           strip -s target/release/SemanticClipboard
           cargo generate-rpm
 
       - name: Package with cargo-packager
-        run: |
-          if [ "${{ matrix.platform }}" = "linux" ]; then
-            NO_STRIP=true cargo packager --release -f ${{ matrix.formats }}
-          else
-            cargo packager --release -f ${{ matrix.formats }}
-          fi
-        shell: bash
+        run: NO_STRIP=true cargo packager --release -f deb,appimage,pacman
 
       - name: Upload binaries to release
         uses: softprops/action-gh-release@v2
@@ -93,9 +66,6 @@ jobs:
             target/packages/**/*.AppImage
             target/packages/**/*.tar.gz
             target/packages/**/*.tar.zst
-            target/packages/**/*.dmg
-            target/packages/**/*.msi
-            target/packages/**/*.exe
             target/generate-rpm/*.rpm
           fail_on_unmatched_files: false
         env:
