@@ -1,0 +1,51 @@
+[package]
+name = "SemanticClipboard"
+version = "0.1.0"
+edition = "2024"
+description = "AI-powered semantic clipboard manager"
+license = "MIT"
+
+[dependencies]
+arboard = "3.6.1"
+bytemuck = "1.25.0"
+chrono = "0.4.45"
+dark-light = "2.0.0"
+directories = "6.0.0"
+dirs = "6.0.0"
+futures-util = "0.3.32"
+gtk = "0.18"
+iced = { version = "0.14.0", features = ["svg", "tokio"] }
+image = "0.25.10"
+ndarray = "0.17.2"
+ort = { version = "2.0.0-rc.12", features = ["ndarray"] }
+rdev = "0.5.3"
+reqwest = { version = "0.13.4", features = ["stream"] }
+rusqlite = { version = "0.31.0", features = ["bundled"] }
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.150"
+tokenizers = "0.23.1"
+tokio = { version = "1.52.3", features = ["full"] }
+tray-icon = { version = "0.24.1", default-features = false, features = ["gtk"] }
+
+[package.metadata.packager]
+product-name = "SemanticClipboard"
+identifier = "com.mixomate.semanticclipboard"
+out-dir = "target/packages"
+formats = ["deb", "appimage", "pacman", "wix", "nsis", "dmg"]
+icons = ["icons/icon.png"]
+resources = [
+    "target/release/*onnxruntime*"
+]
+
+[package.metadata.generate-rpm]
+assets = [
+    { source = "target/release/SemanticClipboard", dest = "/usr/bin/SemanticClipboard", mode = "755" },
+    { source = "linux/SemanticClipboard.desktop", dest = "/usr/share/applications/SemanticClipboard.desktop", mode = "644" },
+    { source = "icons/icon.png", dest = "/usr/share/icons/hicolor/512x512/apps/SemanticClipboard.png", mode = "644" },
+    { source = "icons/hicolor/256x256/apps/SemanticClipboard.png", dest = "/usr/share/icons/hicolor/256x256/apps/SemanticClipboard.png", mode = "644" },
+    { source = "icons/hicolor/128x128/apps/SemanticClipboard.png", dest = "/usr/share/icons/hicolor/128x128/apps/SemanticClipboard.png", mode = "644" },
+    { source = "icons/hicolor/64x64/apps/SemanticClipboard.png", dest = "/usr/share/icons/hicolor/64x64/apps/SemanticClipboard.png", mode = "644" },
+    { source = "icons/hicolor/32x32/apps/SemanticClipboard.png", dest = "/usr/share/icons/hicolor/32x32/apps/SemanticClipboard.png", mode = "644" },
+    { source = "icons/hicolor/16x16/apps/SemanticClipboard.png", dest = "/usr/share/icons/hicolor/16x16/apps/SemanticClipboard.png", mode = "644" },
+    { source = "target/release/libonnxruntime.so", dest = "/usr/lib/libonnxruntime.so", mode = "755" }
+]

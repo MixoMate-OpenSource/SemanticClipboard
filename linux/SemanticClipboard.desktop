@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=Semantic Clipboard
+Comment=AI-powered semantic clipboard manager
+Exec=/usr/bin/SemanticClipboard
+Icon=SemanticClipboard
+Type=Application
+Terminal=false
+Categories=Utility;Office;
